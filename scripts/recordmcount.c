@@ -494,5 +494,3 @@ main(int argc, char *argv[])
 	}
 	return !!n_error;
 }
-
-
