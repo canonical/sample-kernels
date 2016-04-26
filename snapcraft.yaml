@@ -1,0 +1,22 @@
+name: snappyv314
+version: 3.14.0
+summary: A generic amd64 kernel built from source
+description: This is a generic kernel for amd64 / kvm built using x86_64_defconfig plus the minimal snappy config changes
+type: kernel
+
+parts:
+  kernel:
+    plugin: kernel
+    source: .
+    source-branch: snappy_v3.14
+    source-type: git
+    kdefconfig: [x86_64_defconfig, snappy/generic.config, snappy/lxc.config, snappy/security.config, snappy/snappy.config, snappy/systemd.config]
+    kconfigs:
+      - CONFIG_LOCALVERSION="-snappy_v3.14"
+    kernel-initrd-modules:
+      - squashfs
+    kernel-initrd-firmware:
+      - lib/firmware/e100/d101m_ucode.bin
+      - lib/firmware/e100/d101s_ucode.bin
+      - lib/firmware/e100/d102e_ucode.bin
+    kernel-image-target: bzImage
