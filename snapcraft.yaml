@@ -1,5 +1,5 @@
-name: snappyv318
-version: 3.18.0
+name: snappyv44
+version: 4.4.0
 summary: A generic amd64 kernel built from source
 description: This is a generic kernel for amd64 / kvm built using x86_64_defconfig plus the minimal snappy config changes
 type: kernel
@@ -8,11 +8,11 @@ parts:
   kernel:
     plugin: kernel
     source: .
-    source-branch: snappy_v3.18
+    source-branch: stable-4.4.y
     source-type: git
     kdefconfig: [x86_64_defconfig, snappy/generic.config, snappy/security.config, snappy/systemd.config, snappy/snappy.config, snappy/containers.config]
     kconfigs:
-      - CONFIG_LOCALVERSION="-snappy_v3.18"
+      - CONFIG_LOCALVERSION="-stable-4.4.y"
     kernel-initrd-modules:
       - squashfs
     kernel-initrd-firmware:
