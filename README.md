@@ -1,8 +1,6 @@
-Snappy Ubuntu Core Kernel Porting Guide
-=======================================
+# Snappy Ubuntu Core Kernel Porting Guide
 
-Introduction
-------------
+## Introduction
 
 When dealing with 3rd-parties, or simply when trying to port Snappy Ubuntu Core
 to a new piece of hardware, the questions that we most frequently face are:
@@ -29,10 +27,9 @@ on top of the base defconfig of their hardware.
 There is no routine security maintenance nor bug fixing done for these.  For
 official support and maintenance, please contact <???@???>.
 
-Kernel Config
--------------
+## Kernel Config
 
-Goal: Provide a series of config changes that developers can apply with
+*Goal*: Provide a series of config changes that developers can apply with
 scripts/kconfig/merge_config.sh on top of their defconfig file. 
 
 The instructions below assume you are using an Ubuntu 16.04 x86_64 workstation,
@@ -40,14 +37,15 @@ have a recent version of snapcraft installed (>= 2.8.4), and have the tools
 required to build a kernel installed (eg. Ubuntu requires *build-essential*,
 *toolchain*, *apt-get build-dep linux-image-\`uname -r\`*, etc.).
 
-Overview of the kconfig delta:
+###### Overview of the kconfig delta:
 
 An example of the kconfig delta is available [here](https://github.com/leannogasawara/sample-kernels/tree/stable-3.14.y/kernel/configs/snappy) and is composed of:
 
  1. Generic.config - contains the features that we enforce in the Ubuntu config, and
 in general all the configs that ‘make sense’ to enable 
  2. Security.config - security options that we want to turn on - AA, SECCOMP, STACKPROTECTOR, etcetc
- 3. Systemd.config - features required by systemd, see also [README](https://github.com/systemd/systemd/blob/master/README - REQUIREMENTS section)
+ 3. Systemd.config - features required by systemd, see also [README -
+REQUIREMENTS section](https://github.com/systemd/systemd/blob/master/README)
  4. Snappy.config - features that are required by ubuntu-core go here
  5. Containers.config - features required by lxc/docker, see also [check-config.sh](https://github.com/docker/docker/blob/master/contrib/check-config.sh)
 
