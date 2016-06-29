@@ -41,8 +41,7 @@ required to build a kernel installed (eg. Ubuntu requires *build-essential*,
 
 An example of the kconfig delta is available [here](https://github.com/leannogasawara/sample-kernels/tree/stable-3.14.y/kernel/configs/snappy) and is composed of:
 
- 1. Generic.config - contains the features that we enforce in the Ubuntu config, and
-in general all the configs that ‘make sense’ to enable 
+ 1. Generic.config - contains the features that we require and in general all the configs that ‘make sense’ to enable 
  2. Security.config - security options that we want to turn on - AA, SECCOMP, STACKPROTECTOR, etcetc
  3. Systemd.config - features required by systemd, see also [README -
 REQUIREMENTS section](https://github.com/systemd/systemd/blob/master/README)
