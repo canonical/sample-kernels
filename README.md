@@ -1,13 +1,6 @@
 Snappy Ubuntu Core Kernel Porting Guide
 =======================================
 
-The goal of this repository is to serve as a guide to facilitate third parties on
-non-Ubuntu based kernels and most likely stable kernel versions (eg. 3.10, 3.14)
-to enable the minimum kernel requirements in order to get an introductory
-experience with Snappy Ubuntu Core. This may also highlight areas where it would
-be expected that features/functionality would be absent/broken due to the
-kernels lacking the support.
-
 Introduction
 ------------
 
@@ -19,7 +12,7 @@ to a new piece of hardware, the questions that we most frequently face are:
 * **Q**: Is feature X mandatory to run Snappy Ubuntu Core?
 
 The following is meant to answer these questions and serve as a guide to
-facilitate third parties on non-Ubuntu based kernels and most likely older
+facilitate third parties on non-Ubuntu based kernels and most likely stable
 kernel versions (eg. 3.10, 3.14) to enable the minimum kernel requirements in
 order to get an introductory experience with Snappy Ubuntu Core. This may also
 highlight areas where it would be expected that features/functionality would be
@@ -32,7 +25,7 @@ was split in kconfig fragments (one per area / software) that people can apply
 on top of the base defconfig of their hardware.
 
 
-DISCLAIMER:  It should also be noted that these are NOT officially maintained.
+**DISCLAIMER**:  It should also be noted that these branches are NOT officially maintained.
 There is no routine security maintenance nor bug fixing done for these.  For
 official support and maintenance, please contact <???@???>.
 
@@ -44,30 +37,29 @@ scripts/kconfig/merge_config.sh on top of their defconfig file.
 
 The instructions below assume you are using an Ubuntu 16.04 x86_64 workstation,
 have a recent version of snapcraft installed (>= 2.8.4), and have the tools
-required to build a kernel installed (eg. Ubuntu requires build-essential,
-toolchain, apt-get build-dep linux-image-`uname -r`, etc.).
+required to build a kernel installed (eg. Ubuntu requires *build-essential*,
+*toolchain*, *apt-get build-dep linux-image-`uname -r`*, etc.).
 
 Overview of the kconfig delta:
 
 An example of the kconfig delta is available [here](https://github.com/leannogasawara/sample-kernels/tree/stable-3.14.y/kernel/configs/snappy) and is composed of:
 
- * Generic.config - contains the features that we enforce in the Ubuntu config, and
+ 1. Generic.config - contains the features that we enforce in the Ubuntu config, and
 in general all the configs that ‘make sense’ to enable 
- * Security.config - security options that we want to turn on - AA, SECCOMP, STACKPROTECTOR, etcetc
- * Systemd.config - features required by systemd, see also [README](https://github.com/systemd/systemd/blob/master/README - REQUIREMENTS section)
- * Snappy.config - features that are required by ubuntu-core go here
- * Containers.config - features required by lxc/docker, see also [check-config.sh](https://github.com/docker/docker/blob/master/contrib/check-config.sh)
+ 2. Security.config - security options that we want to turn on - AA, SECCOMP, STACKPROTECTOR, etcetc
+ 3. Systemd.config - features required by systemd, see also [README](https://github.com/systemd/systemd/blob/master/README - REQUIREMENTS section)
+ 4. Snappy.config - features that are required by ubuntu-core go here
+ 5. Containers.config - features required by lxc/docker, see also [check-config.sh](https://github.com/docker/docker/blob/master/contrib/check-config.sh)
 
-Git tree & base branches location:
- * https://git.launchpad.net/~p-pisati/ubuntu/+source/linux/
-	* snappy_v4.4
-	* snappy_v3.18
-	* snappy_v3.14
-	* snappy_v3.10
-	* 3.16? 4.1? …
- * Android tree https://code.launchpad.net/~wenchien/+git/android-kernel
-    * snappy_v3.10 - based on android-3.10.y
-    * snappy_v3.14 - based on android-3.14
+Reference branches:
+ * Linux LTS
+	* [stable-3.10.y](https://github.com/leannogasawara/sample-kernels/tree/stable-3.10.y)
+	* [stable-3.14.y](https://github.com/leannogasawara/sample-kernels/tree/stable-3.14.y)
+	* [stable-3.18.y](https://github.com/leannogasawara/sample-kernels/tree/stable-3.18.y)
+	* [stable-4.4.y](https://github.com/leannogasawara/sample-kernels/tree/stable-4.4.y)
+ * Android LTS
+	* [android-3.10.y](https://github.com/leannogasawara/sample-kernels/tree/android-3.10.y)
+	* [android-3.14.y](https://github.com/leannogasawara/sample-kernels/tree/android-3.14.y)
 
 All of these branches went under these modifications:
 
@@ -88,11 +80,11 @@ branches following these steps:
 
 Clone the ‘ubuntu-core’ official git tree:
 ```
-git clone git://git.launchpad.net/~p-pisati/ubuntu/+source/linux
+git clone https://github.com/leannogasawara/sample-kernels.git
 ```
 Pick the kernel version that suit your needs:
 ```
-cd linux && git checkout snappy_v4.4
+cd sample-kernels && git checkout stable-3.14.y
 ```
 If the target hardware requires any custom patch, apply it now on top of this
 tree (in case of a big BSP stack, it makes more sense to rebase the BSP on top
