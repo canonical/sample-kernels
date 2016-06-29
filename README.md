@@ -29,7 +29,7 @@ official support and maintenance, please contact <???@???>.
 
 ## Kernel Config
 
-*Goal*: Provide a series of config changes that developers can apply with
+**Goal**: Provide a series of config changes that developers can apply with
 scripts/kconfig/merge_config.sh on top of their defconfig file. 
 
 The instructions below assume you are using an Ubuntu 16.04 x86_64 workstation,
@@ -37,7 +37,7 @@ have a recent version of snapcraft installed (>= 2.8.4), and have the tools
 required to build a kernel installed (eg. Ubuntu requires *build-essential*,
 *toolchain*, *apt-get build-dep linux-image-\`uname -r\`*, etc.).
 
-###### Overview of the kconfig delta:
+##### Overview of the kconfig delta:
 
 An example of the kconfig delta is available [here](https://github.com/leannogasawara/sample-kernels/tree/stable-3.14.y/kernel/configs/snappy) and is composed of:
 
