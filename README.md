@@ -39,7 +39,7 @@ required to build a kernel installed (eg. Ubuntu requires *build-essential*,
 
 ##### Overview of the kconfig delta:
 
-An example of the kconfig delta is available [here](https://github.com/leannogasawara/sample-kernels/tree/stable-3.14.y/kernel/configs/snappy) and is composed of:
+An example of the kconfig delta is available [here](https://github.com/snapcore/sample-kernels/tree/stable-3.14.y/kernel/configs/snappy) and is composed of:
 
  1. Generic.config - contains the features that we require and in general all the configs that ‘make sense’ to enable 
  2. Security.config - security options that we want to turn on - AA, SECCOMP, STACKPROTECTOR, etcetc
@@ -50,13 +50,13 @@ REQUIREMENTS section](https://github.com/systemd/systemd/blob/master/README)
 
 Reference branches:
  * Linux LTS
-	* [stable-3.10.y](https://github.com/leannogasawara/sample-kernels/tree/stable-3.10.y)
-	* [stable-3.14.y](https://github.com/leannogasawara/sample-kernels/tree/stable-3.14.y)
-	* [stable-3.18.y](https://github.com/leannogasawara/sample-kernels/tree/stable-3.18.y)
-	* [stable-4.4.y](https://github.com/leannogasawara/sample-kernels/tree/stable-4.4.y)
+	* [stable-3.10.y](https://github.com/snapcore/sample-kernels/tree/stable-3.10.y)
+	* [stable-3.14.y](https://github.com/snapcore/sample-kernels/tree/stable-3.14.y)
+	* [stable-3.18.y](https://github.com/snapcore/sample-kernels/tree/stable-3.18.y)
+	* [stable-4.4.y](https://github.com/snapcore/sample-kernels/tree/stable-4.4.y)
  * Android LTS
-	* [android-3.10.y](https://github.com/leannogasawara/sample-kernels/tree/android-3.10.y)
-	* [android-3.14.y](https://github.com/leannogasawara/sample-kernels/tree/android-3.14.y)
+	* [android-3.10.y](https://github.com/snapcore/sample-kernels/tree/android-3.10.y)
+	* [android-3.14.y](https://github.com/snapcore/sample-kernels/tree/android-3.14.y)
 
 All of these branches went under these modifications:
 
@@ -77,7 +77,7 @@ branches following these steps:
 
 Clone the ‘ubuntu-core’ official git tree:
 ```
-git clone https://github.com/leannogasawara/sample-kernels.git
+git clone https://github.com/snapcore/sample-kernels.git
 ```
 Pick the kernel version that suit your needs:
 ```
