@@ -8,7 +8,6 @@ parts:
   kernel:
     plugin: kernel
     source: .
-    source-branch: snappy_v3.14
     source-type: git
     kdefconfig: [x86_64_defconfig, snappy/generic.config, snappy/security.config, snappy/systemd.config, snappy/snappy.config, snappy/containers.config]
     kconfigs:
