@@ -12,8 +12,4 @@ parts:
     kdefconfig: [x86_64_defconfig, snappy/generic.config, snappy/security.config, snappy/systemd.config, snappy/snappy.config, snappy/containers.config]
     kconfigs:
       - CONFIG_LOCALVERSION="-stable-4.4.y"
-    kernel-initrd-firmware:
-      - lib/firmware/e100/d101m_ucode.bin
-      - lib/firmware/e100/d101s_ucode.bin
-      - lib/firmware/e100/d102e_ucode.bin
     kernel-image-target: bzImage
