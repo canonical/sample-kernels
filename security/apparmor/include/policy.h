@@ -18,6 +18,7 @@
 #include <linux/capability.h>
 #include <linux/cred.h>
 #include <linux/kref.h>
+#include <linux/rhashtable.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/socket.h>
@@ -78,6 +79,19 @@ struct aa_policydb {
 
 };
 
+/* struct aa_data - generic data structure
+ * key: name for retrieving this data
+ * size: size of data in bytes
+ * data: binary data
+ * head: reserved for rhashtable
+ */
+struct aa_data {
+	char *key;
+	size_t size;
+	char *data;
+	struct rhash_head head;
+};
+
 /* struct aa_profile - basic confinement data
  * @base - base components of the profile (name, refcount, lists, lock ...)
  * @label - label this profile is an extension of
@@ -97,9 +111,9 @@ struct aa_policydb {
  * @caps: capabilities for the profile
  * @net: network controls for the profile
  * @rlimits: rlimits for the profile
- *
  * @dents: dentries for the profiles file entries in apparmorfs
  * @dirname: name of the profile dir in apparmorfs
+ * @data: hashtable for free-form policy aa_data
  *
  * The AppArmor profile contains the basic confinement data.  Each profile
  * has a name, and exists in a namespace.  The @name and @exec_match are
@@ -135,9 +149,11 @@ struct aa_profile {
 	struct aa_net net;
 	struct aa_rlimit rlimits;
 
+	struct aa_loaddata *rawdata;
 	unsigned char *hash;
 	char *dirname;
 	struct dentry *dents[AAFS_PROF_SIZEOF];
+	struct rhashtable *data;
 	struct aa_label label;
 };
 
@@ -169,9 +185,10 @@ struct aa_profile *aa_fqlookupn_profile(struct aa_label *base,
 					const char *fqname, size_t n);
 struct aa_profile *aa_match_profile(struct aa_ns *ns, const char *name);
 
-ssize_t aa_replace_profiles(struct aa_label *label, u32 mask, void *udata,
-			    size_t size);
-ssize_t aa_remove_profiles(struct aa_label *label, char *name, size_t size);
+ssize_t aa_replace_profiles(struct aa_ns *view, struct aa_label *label,
+			    u32 mask, struct aa_loaddata *udata);
+ssize_t aa_remove_profiles(struct aa_ns *view, struct aa_label *label,
+			   char *name, size_t size);
 void __aa_profile_list_release(struct list_head *head);
 
 #define PROF_ADD 1
@@ -280,9 +297,9 @@ static inline int AUDIT_MODE(struct aa_profile *profile)
 	return profile->audit;
 }
 
-bool policy_view_capable(void);
-bool policy_admin_capable(void);
+bool policy_view_capable(struct aa_ns *ns);
+bool policy_admin_capable(struct aa_ns *ns);
 bool aa_may_open_profiles(void);
-int aa_may_manage_policy(struct aa_label *label, u32 mask);
+int aa_may_manage_policy(struct aa_label *label, struct aa_ns *ns, u32 mask);
 
 #endif /* __AA_POLICY_H */

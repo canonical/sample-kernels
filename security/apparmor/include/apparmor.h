@@ -17,6 +17,8 @@
 
 #include <linux/types.h>
 
+#include "backport.h"
+
 /*
  * Class of mediation types in the AppArmor policy db
  */

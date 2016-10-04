@@ -29,26 +29,26 @@
 
 #define AA_MS_IGNORE_MASK (MS_KERNMOUNT | MS_NOSEC | MS_ACTIVE | MS_BORN)
 
-int aa_remount(struct aa_label *label, struct path *path, unsigned long flags,
-	       void *data);
+int aa_remount(struct aa_label *label, const struct path *path,
+	       unsigned long flags, void *data);
 
-int aa_bind_mount(struct aa_label *label, struct path *path,
+int aa_bind_mount(struct aa_label *label, const struct path *path,
 		  const char *old_name, unsigned long flags);
 
 
-int aa_mount_change_type(struct aa_label *label, struct path *path,
+int aa_mount_change_type(struct aa_label *label, const struct path *path,
 			 unsigned long flags);
 
-int aa_move_mount(struct aa_label *label, struct path *path,
+int aa_move_mount(struct aa_label *label, const struct path *path,
 		  const char *old_name);
 
 int aa_new_mount(struct aa_label *label, const char *dev_name,
-		 struct path *path, const char *type, unsigned long flags,
+		 const struct path *path, const char *type, unsigned long flags,
 		 void *data);
 
 int aa_umount(struct aa_label *label, struct vfsmount *mnt, int flags);
 
-int aa_pivotroot(struct aa_label *label, struct path *old_path,
-		  struct path *new_path);
+int aa_pivotroot(struct aa_label *label, const struct path *old_path,
+		 const struct path *new_path);
 
 #endif /* __AA_MOUNT_H */

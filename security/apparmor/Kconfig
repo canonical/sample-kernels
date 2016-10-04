@@ -66,7 +66,7 @@ config SECURITY_APPARMOR_UNCONFINED_INIT
 	  If you are unsure how to answer this question, answer Y.
 
 config SECURITY_APPARMOR_HASH
-	bool "enable introspection of sha1 hashes for loaded profiles"
+	bool "Enable introspection of sha1 hashes for loaded profiles"
 	depends on SECURITY_APPARMOR
 	select CRYPTO
 	select CRYPTO_SHA1

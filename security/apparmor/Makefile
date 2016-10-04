@@ -5,7 +5,7 @@ obj-$(CONFIG_SECURITY_APPARMOR) += apparmor.o
 apparmor-y := apparmorfs.o audit.o capability.o context.o ipc.o lib.o match.o \
               path.o domain.o policy.o policy_unpack.o procattr.o lsm.o \
               resource.o sid.o file.o label.o mount.o net.o af_unix.o \
-              policy_ns.o
+              policy_ns.o backport.o
 apparmor-$(CONFIG_SECURITY_APPARMOR_HASH) += crypto.o
 
 clean-files := capability_names.h rlim_names.h net_names.h

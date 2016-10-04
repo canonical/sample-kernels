@@ -21,6 +21,7 @@
 #include <linux/ctype.h>
 #include <linux/errno.h>
 #include <linux/string.h>
+#include <linux/jhash.h>
 
 #include "include/apparmor.h"
 #include "include/audit.h"
@@ -122,6 +123,15 @@ static int audit_iface(struct aa_profile *new, const char *ns_name,
 	aad(&sa)->error = error;
 
 	return aa_audit(AUDIT_APPARMOR_STATUS, profile, &sa, audit_cb);
+}
+
+void aa_loaddata_kref(struct kref *kref)
+{
+	struct aa_loaddata *d = container_of(kref, struct aa_loaddata, count);
+	if (d) {
+		kzfree(d->hash);
+		kvfree(d);
+	}
 }
 
 /* test if read will be in packed data bounds */
@@ -495,6 +505,30 @@ fail:
 	return 0;
 }
 
+static void *kvmemdup(const void *src, size_t len)
+{
+	void *p = kvmalloc(len);
+
+	if (p)
+		memcpy(p, src, len);
+	return p;
+}
+
+static u32 strhash(const void *data, u32 len, u32 seed)
+{
+	const char * const *key = data;
+
+	return jhash(*key, strlen(*key), seed);
+}
+
+static int datacmp(struct rhashtable_compare_arg *arg, const void *obj)
+{
+	const struct aa_data *data = obj;
+	const char * const *key = arg->key;
+
+	return strcmp(data->key, *key);
+}
+
 /**
  * unpack_profile - unpack a serialized profile
  * @e: serialized data extent information (NOT NULL)
@@ -507,6 +541,9 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 	const char *tmpname, *tmpns = NULL, *name = NULL;
 	const char *info = "failed to unpack profile";
 	size_t size = 0, ns_len;
+	struct rhashtable_params params = { 0 };
+	char *key = NULL;
+	struct aa_data *data;
 	int i, error = -EPROTO;
 	kernel_cap_t tmpcap;
 	u32 tmp;
@@ -697,6 +734,45 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 	if (!unpack_trans_table(e, profile))
 		goto fail;
 
+	if (unpack_nameX(e, AA_STRUCT, "data")) {
+		profile->data = kzalloc(sizeof(*profile->data), GFP_KERNEL);
+		if (!profile->data)
+			goto fail;
+
+		params.nelem_hint = 3;
+		params.key_len = sizeof(void *);
+		params.key_offset = offsetof(struct aa_data, key);
+		params.head_offset = offsetof(struct aa_data, head);
+		params.hashfn = strhash;
+		params.obj_cmpfn = datacmp;
+
+		if (rhashtable_init(profile->data, &params))
+			goto fail;
+
+		while (unpack_strdup(e, &key, NULL)) {
+			data = kzalloc(sizeof(*data), GFP_KERNEL);
+			if (!data) {
+				kzfree(key);
+				goto fail;
+			}
+
+			data->key = key;
+			data->size = unpack_blob(e, &data->data, NULL);
+			data->data = kvmemdup(data->data, data->size);
+			if (data->size && !data->data) {
+				kzfree(data->key);
+				kzfree(data);
+				goto fail;
+			}
+
+			rhashtable_insert_fast(profile->data, &data->head,
+					       profile->data->p);
+		}
+
+		if (!unpack_nameX(e, AA_STRUCTEND, NULL))
+			goto fail;
+	}
+
 	if (!unpack_nameX(e, AA_STRUCTEND, NULL))
 		goto fail;
 
@@ -827,7 +903,6 @@ struct aa_load_ent *aa_load_ent_alloc(void)
 /**
  * aa_unpack - unpack packed binary profile(s) data loaded from user space
  * @udata: user data copied to kmem  (NOT NULL)
- * @size: the size of the user data
  * @lh: list to place unpacked profiles in a aa_repl_ws
  * @ns: Returns namespace profile is in if specified else NULL (NOT NULL)
  *
@@ -837,15 +912,15 @@ struct aa_load_ent *aa_load_ent_alloc(void)
  *
  * Returns: profile(s) on @lh else error pointer if fails to unpack
  */
-int aa_unpack(void *udata, size_t size, struct list_head *lh, const char **ns)
+int aa_unpack(struct aa_loaddata *udata, struct list_head *lh, const char **ns)
 {
 	struct aa_load_ent *tmp, *ent;
 	struct aa_profile *profile = NULL;
 	int error;
 	struct aa_ext e = {
-		.start = udata,
-		.end = udata + size,
-		.pos = udata,
+		.start = udata->data,
+		.end = udata->data + udata->size,
+		.pos = udata->data,
 	};
 
 	*ns = NULL;
@@ -855,7 +930,6 @@ int aa_unpack(void *udata, size_t size, struct list_head *lh, const char **ns)
 		error = verify_header(&e, e.pos == e.start, ns);
 		if (error)
 			goto fail;
-
 		start = e.pos;
 		profile = unpack_profile(&e, &ns_name);
 		if (IS_ERR(profile)) {
@@ -883,7 +957,15 @@ int aa_unpack(void *udata, size_t size, struct list_head *lh, const char **ns)
 		ent->ns_name = ns_name;
 		list_add_tail(&ent->list, lh);
 	}
-
+	udata->abi = e.version & K_ABI_MASK;
+	if (aa_g_hash_policy) {
+		udata->hash = aa_calc_hash(udata->data, udata->size);
+		if (IS_ERR(udata->hash)) {
+			error = PTR_ERR(udata->hash);
+			udata->hash = NULL;
+			goto fail;
+		}
+	}
 	return 0;
 
 fail_profile:

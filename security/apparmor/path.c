@@ -49,8 +49,8 @@ static int prepend(char **buffer, int buflen, const char *str, int namelen)
  *     of chroot) and specifically directed to connect paths to
  *     namespace root.
  */
-static int disconnect(struct path *path, char *buf, char **name, int flags,
-		      const char *disconnected)
+static int disconnect(const struct path *path, char *buf, char **name,
+		      int flags, const char *disconnected)
 {
 	int error = 0;
 
@@ -89,7 +89,7 @@ static int disconnect(struct path *path, char *buf, char **name, int flags,
  *          When no error the path name is returned in @name which points to
  *          to a position in @buf
  */
-static int d_namespace_path(struct path *path, char *buf, char **name,
+static int d_namespace_path(const struct path *path, char *buf, char **name,
 			    int flags, const char *disconnected)
 {
 	char *res;
@@ -162,7 +162,7 @@ static int d_namespace_path(struct path *path, char *buf, char **name,
 	 *    allocated.
 	 */
 	if (d_unlinked(path->dentry) && d_is_positive(path->dentry) &&
-	    !(flags & PATH_MEDIATE_DELETED)) {
+	    !(flags & (PATH_MEDIATE_DELETED | PATH_DELEGATE_DELETED))) {
 			error = -ENOENT;
 			goto out;
 	}
@@ -198,8 +198,8 @@ out:
  *
  * Returns: %0 else error code if could retrieve name
  */
-int aa_path_name(struct path *path, int flags, char *buffer, const char **name,
-		 const char **info, const char *disconnected)
+int aa_path_name(const struct path *path, int flags, char *buffer,
+		 const char **name, const char **info, const char *disconnected)
 {
 	char *str = NULL;
 	int error = d_namespace_path(path, buffer, &str, flags, disconnected);

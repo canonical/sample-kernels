@@ -107,7 +107,8 @@ int aa_audit_file(struct aa_profile *profile, struct aa_perms *perms,
 {
 	int type = AUDIT_APPARMOR_AUTO;
 
-	DEFINE_AUDIT_DATA(sa, LSM_AUDIT_DATA_NONE, op);
+	DEFINE_AUDIT_DATA(sa, LSM_AUDIT_DATA_TASK, op);
+	sa.u.tsk = NULL;
 	aad(&sa)->request = request;
 	aad(&sa)->name = name;
 	aad(&sa)->fs.target = target;
@@ -164,18 +165,15 @@ static inline bool is_deleted(struct dentry *dentry)
 	return 0;
 }
 
-static int path_name(const char *op, struct aa_label *label, struct path *path,
-		     int flags, char *buffer, const char**name,
-		     struct path_cond *cond, u32 request, bool delegate_deleted)
+static int path_name(const char *op, struct aa_label *label,
+		     const struct path *path, int flags, char *buffer,
+		     const char**name, struct path_cond *cond, u32 request)
 {
 	struct aa_profile *profile;
 	const char *info = NULL;
 	int error = aa_path_name(path, flags, buffer, name, &info,
 				 labels_profile(label)->disconnected);
 	if (error) {
-		if (error == -ENOENT && is_deleted(path->dentry) &&
-		    delegate_deleted)
-			return 0;
 		fn_for_each_confined(label, profile,
 			aa_audit_file(profile, &nullperms, op, request, *name,
 				      NULL, NULL, cond->uid, info, error));
@@ -288,6 +286,7 @@ int __aa_path_perm(const char *op, struct aa_profile *profile, const char *name,
 		   struct aa_perms *perms)
 {
 	int e = 0;
+
 	if (profile_unconfined(profile) ||
 	    ((flags & PATH_SOCK_COND) && !PROFILE_MEDIATES_AF(profile, AF_UNIX)))
 		return 0;
@@ -296,6 +295,27 @@ int __aa_path_perm(const char *op, struct aa_profile *profile, const char *name,
 		e = -EACCES;
 	return aa_audit_file(profile, perms, op, request, name, NULL, NULL,
 			     cond->uid, NULL, e);
+}
+
+
+static int profile_path_perm(const char *op, struct aa_profile *profile,
+			     const struct path *path, char *buffer, u32 request,
+			     struct path_cond *cond, int flags,
+			     struct aa_perms *perms)
+{
+	const char *name;
+	int error;
+
+	if (profile_unconfined(profile))
+		return 0;
+
+	error = path_name(op, &profile->label, path,
+			  flags | profile->path_flags, buffer, &name, cond,
+			  request);
+	if (error)
+		return error;
+	return __aa_path_perm(op, profile, name, request, cond, flags,
+			      perms);
 }
 
 /**
@@ -309,26 +329,20 @@ int __aa_path_perm(const char *op, struct aa_profile *profile, const char *name,
  *
  * Returns: %0 else error if access denied or other error
  */
-int aa_path_perm(const char *op, struct aa_label *label, struct path *path,
-		 int flags, u32 request, struct path_cond *cond)
+int aa_path_perm(const char *op, struct aa_label *label,
+		 const struct path *path, int flags, u32 request,
+		 struct path_cond *cond)
 {
 	struct aa_perms perms = {};
-	char *buffer = NULL;
-	const char *name;
 	struct aa_profile *profile;
+	char *buffer = NULL;
 	int error;
 
-	/* TODO: fix path lookup flags */
-	flags |= labels_profile(label)->path_flags |
-		(S_ISDIR(cond->mode) ? PATH_IS_DIR : 0);
+	flags |= PATH_DELEGATE_DELETED | (S_ISDIR(cond->mode) ? PATH_IS_DIR : 0);
 	get_buffers(buffer);
-
-	error = path_name(op, label, path, flags, buffer, &name, cond,
-			  request, true);
-	if (!error)
-		error = fn_for_each_confined(label, profile,
-				__aa_path_perm(op, profile, name, request, cond,
-					       flags, &perms));
+	error = fn_for_each_confined(label, profile,
+			profile_path_perm(op, profile, path, buffer, request,
+					  cond, flags, &perms));
 
 	put_buffers(buffer);
 	return error;
@@ -354,15 +368,30 @@ static inline bool xindex_is_subset(u32 link, u32 target)
 	return 1;
 }
 
-static int profile_path_link(struct aa_profile *profile, const char *lname,
-			     const char *tname, struct path_cond *cond)
+static int profile_path_link(struct aa_profile *profile,
+			     const struct path *link, char *buffer,
+			     const struct path *target, char *buffer2,
+			     struct path_cond *cond)
 {
+	const char *lname, *tname = NULL;
 	struct aa_perms lperms, perms;
 	const char *info = NULL;
 	u32 request = AA_MAY_LINK;
 	unsigned int state;
-	int e = -EACCES;
+	int error;
 
+	error = path_name(OP_LINK, &profile->label, link, profile->path_flags,
+			  buffer, &lname, cond, AA_MAY_LINK);
+	if (error)
+		goto audit;
+
+	/* buffer2 freed below, tname is pointer in buffer2 */
+	error = path_name(OP_LINK, &profile->label, target, profile->path_flags,
+			  buffer2, &tname, cond, AA_MAY_LINK);
+	if (error)
+		goto audit;
+
+	error = -EACCES;
 	/* aa_str_perms - handles the case of the dfa being NULL */
 	state = aa_str_perms(profile->file.dfa, profile->file.start, lname,
 			     cond, &lperms);
@@ -413,11 +442,11 @@ static int profile_path_link(struct aa_profile *profile, const char *lname,
 	}
 
 done_tests:
-	e = 0;
+	error = 0;
 
 audit:
 	return aa_audit_file(profile, &lperms, OP_LINK, request, lname, tname,
-			     NULL, cond->uid, info, e);
+			     NULL, cond->uid, info, error);
 }
 
 /**
@@ -439,7 +468,7 @@ audit:
  * Returns: %0 if allowed else error
  */
 int aa_path_link(struct aa_label *label, struct dentry *old_dentry,
-		 struct path *new_dir, struct dentry *new_dentry)
+		 const struct path *new_dir, struct dentry *new_dentry)
 {
 	struct path link = { new_dir->mnt, new_dentry };
 	struct path target = { new_dir->mnt, old_dentry };
@@ -448,31 +477,14 @@ int aa_path_link(struct aa_label *label, struct dentry *old_dentry,
 		d_backing_inode(old_dentry)->i_mode
 	};
 	char *buffer = NULL, *buffer2 = NULL;
-	const char *lname, *tname = NULL;
 	struct aa_profile *profile;
 	int error;
 
-	/* TODO: fix path lookup flags, auditing of failed path for profile */
-	profile = labels_profile(label);
 	/* buffer freed below, lname is pointer in buffer */
 	get_buffers(buffer, buffer2);
-	error = path_name(OP_LINK, label, &link,
-			  labels_profile(label)->path_flags, buffer,
-			  &lname, &cond, AA_MAY_LINK, false);
-	if (error)
-		goto out;
-
-	/* buffer2 freed below, tname is pointer in buffer2 */
-	error = path_name(OP_LINK, label, &target,
-			  labels_profile(label)->path_flags, buffer2, &tname,
-			  &cond, AA_MAY_LINK, false);
-	if (error)
-		goto out;
-
 	error = fn_for_each_confined(label, profile,
-			profile_path_link(profile, lname, tname, &cond));
-
-out:
+			profile_path_link(profile, &link, buffer, &target,
+					  buffer2, &cond));
 	put_buffers(buffer, buffer2);
 
 	return error;
@@ -509,7 +521,6 @@ static int __file_path_perm(const char *op, struct aa_label *label,
 		.uid = file_inode(file)->i_uid,
 		.mode = file_inode(file)->i_mode
 	};
-	const char *name;
 	char *buffer;
 	int flags, error;
 
@@ -518,27 +529,13 @@ static int __file_path_perm(const char *op, struct aa_label *label,
 		/* TODO: check for revocation on stale profiles */
 		return 0;
 
-	/* TODO: fix path lookup flags */
-	flags = PATH_DELEGATE_DELETED | labels_profile(label)->path_flags |
-		(S_ISDIR(cond.mode) ? PATH_IS_DIR : 0);
+	flags = PATH_DELEGATE_DELETED | (S_ISDIR(cond.mode) ? PATH_IS_DIR : 0);
 	get_buffers(buffer);
-
-	error = path_name(op, label, &file->f_path, flags, buffer, &name, &cond,
-			  request, true);
-	if (error) {
-		if (error == 1)
-			/* Access to open files that are deleted are
-			 * given a pass (implicit delegation)
-			 */
-			/* TODO not needed when full perms cached */
-			error = 0;
-		goto out;
-	}
 
 	/* check every profile in task label not in current cache */
 	error = fn_for_each_not_in_set(flabel, label, profile,
-			__aa_path_perm(op, profile, name, request, &cond, 0,
-				       &perms));
+			profile_path_perm(op, profile, &file->f_path, buffer,
+					  request, &cond, flags, &perms));
 	if (denied) {
 		/* check every profile in file label that was not tested
 		 * in the initial check above.
@@ -548,13 +545,13 @@ static int __file_path_perm(const char *op, struct aa_label *label,
 		/* TODO: don't audit here */
 		last_error(error,
 			fn_for_each_not_in_set(label, flabel, profile,
-				__aa_path_perm(op, profile, name, request,
-					       &cond, 0, &perms)));
+				profile_path_perm(op, profile, &file->f_path,
+						  buffer, request, &cond, flags,
+						  &perms)));
 	}
 	if (!error)
 		update_file_ctx(file_ctx(file), label, request);
 
-out:
 	put_buffers(buffer);
 
 	return error;

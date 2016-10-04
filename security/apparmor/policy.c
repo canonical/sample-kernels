@@ -87,10 +87,11 @@
 #include "include/match.h"
 #include "include/path.h"
 #include "include/policy.h"
+#include "include/policy_ns.h"
 #include "include/policy_unpack.h"
 #include "include/resource.h"
 
-int unprivileged_userns_apparmor_policy = 0;
+int unprivileged_userns_apparmor_policy = 1;
 
 /* Note: mode names must be unique in the first character because of
  *       modechrs used to print modes on compound labels on some interfaces
@@ -102,6 +103,19 @@ const char *const aa_profile_mode_names[] = {
 	"unconfined",
 };
 
+/**
+ * aa_free_data - free a data blob
+ * @ptr: data to free
+ * @arg: unused
+ */
+static void aa_free_data(void *ptr, void *arg)
+{
+	struct aa_data *data = ptr;
+
+	kzfree(data->data);
+	kzfree(data->key);
+	kzfree(data);
+}
 
 /**
  * __add_profile - add a profiles to list and label tree
@@ -199,6 +213,8 @@ void __aa_profile_list_release(struct list_head *head)
  */
 void aa_free_profile(struct aa_profile *profile)
 {
+	struct rhashtable *rht;
+
 	AA_DEBUG("%s(%p)\n", __func__, profile);
 
 	if (!profile)
@@ -220,7 +236,16 @@ void aa_free_profile(struct aa_profile *profile)
 	aa_put_dfa(profile->xmatch);
 	aa_put_dfa(profile->policy.dfa);
 
+	if (profile->data) {
+		rht = profile->data;
+		profile->data = NULL;
+		rhashtable_free_and_destroy(rht, aa_free_data, NULL);
+		kzfree(rht);
+	}
+
 	kzfree(profile->hash);
+	aa_put_loaddata(profile->rawdata);
+
 	kzfree(profile);
 }
 
@@ -611,49 +636,49 @@ static int audit_policy(struct aa_label *label, const char *op,
 	aad(&sa)->info = info;
 	aad(&sa)->error = error;
 	aad(&sa)->label = label;
-	
+
 	aa_audit_msg(AUDIT_APPARMOR_STATUS, &sa, audit_cb);
 
 	return error;
 }
 
-bool policy_view_capable(void)
+/**
+ * policy_view_capable - check if viewing policy in at @ns is allowed
+ * ns: namespace being viewed by current task (may be NULL)
+ * Returns: true if viewing policy is allowed
+ *
+ * If @ns is NULL then the namespace being viewed is assumed to be the
+ * tasks current namespace.
+ */
+bool policy_view_capable(struct aa_ns *ns)
 {
 	struct user_namespace *user_ns = current_user_ns();
-	struct aa_ns *ns = aa_get_current_ns();
-	bool response = false;
-
-	if (ns_capable(user_ns, CAP_MAC_ADMIN) &&
-	    (user_ns == &init_user_ns ||
-	     (unprivileged_userns_apparmor_policy != 0 &&
-	      user_ns->level == 1 && ns != root_ns)))
-		response = true;
-	aa_put_ns(ns);
-
-	return response;
-}
-
-bool policy_admin_capable(void)
-{
-	return policy_view_capable() && !aa_g_lock_policy;
-}
-
-bool aa_may_open_profiles(void)
-{
-	struct user_namespace *user_ns = current_user_ns();
-	struct aa_ns *ns = aa_get_current_ns();
+	struct aa_ns *view_ns = aa_get_current_ns();
 	bool root_in_user_ns = uid_eq(current_euid(), make_kuid(user_ns, 0)) ||
 			       in_egroup_p(make_kgid(user_ns, 0));
 	bool response = false;
+	if (!ns)
+		ns = view_ns;
 
-	if (root_in_user_ns &&
+	if (root_in_user_ns && aa_ns_visible(view_ns, ns, true) &&
 	    (user_ns == &init_user_ns ||
 	     (unprivileged_userns_apparmor_policy != 0 &&
-	      user_ns->level == 1 && ns != root_ns)))
+	      user_ns->level == view_ns->level)))
 		response = true;
-	aa_put_ns(ns);
+	aa_put_ns(view_ns);
 
 	return response;
+}
+
+bool policy_admin_capable(struct aa_ns *ns)
+{
+	struct user_namespace *user_ns = current_user_ns();
+	bool capable = ns_capable(user_ns, CAP_MAC_ADMIN);
+
+	AA_DEBUG("cap_mac_admin? %d\n", capable);
+	AA_DEBUG("policy locked? %d\n", aa_g_lock_policy);
+
+	return policy_view_capable(ns) && capable && !aa_g_lock_policy;
 }
 
 /**
@@ -663,7 +688,7 @@ bool aa_may_open_profiles(void)
  *
  * Returns: 0 if the task is allowed to manipulate policy else error
  */
-int aa_may_manage_policy(struct aa_label *label, u32 mask)
+int aa_may_manage_policy(struct aa_label *label, struct aa_ns *ns, u32 mask)
 {
 	const char *op;
 
@@ -679,7 +704,7 @@ int aa_may_manage_policy(struct aa_label *label, u32 mask)
 		return audit_policy(label, op, NULL, NULL, "policy_locked",
 				    -EACCES);
 
-	if (!policy_admin_capable())
+	if (!policy_admin_capable(ns))
 		return audit_policy(label, op, NULL, NULL, "not policy admin",
 				    -EACCES);
 
@@ -825,10 +850,10 @@ static struct aa_profile *update_to_newest_parent(struct aa_profile *new)
 
 /**
  * aa_replace_profiles - replace profile(s) on the profile list
+ * @view: namespace load is viewed from
  * @label: label that is attempting to load/replace policy
  * @mask: permission mask
  * @udata: serialized data stream  (NOT NULL)
- * @size: size of the serialized data stream
  *
  * unpack and replace a profile on the profile list and uses of that profile
  * by any aa_task_ctx.  If the profile does not exist on the profile list
@@ -836,10 +861,10 @@ static struct aa_profile *update_to_newest_parent(struct aa_profile *new)
  *
  * Returns: size of data consumed else error code on failure.
  */
-ssize_t aa_replace_profiles(struct aa_label *label, u32 mask, void *udata,
-			    size_t size)
+ssize_t aa_replace_profiles(struct aa_ns *view, struct aa_label *label,
+			    u32 mask, struct aa_loaddata *udata)
 {
-	const char *ns_name, *name = NULL, *info = NULL;
+	const char *ns_name, *info = NULL;
 	struct aa_ns *ns = NULL;
 	struct aa_load_ent *ent, *tmp;
 	const char *op = mask & AA_MAY_REPLACE_POLICY ? OP_PROF_REPL : OP_PROF_LOAD;
@@ -848,7 +873,7 @@ ssize_t aa_replace_profiles(struct aa_label *label, u32 mask, void *udata,
 	LIST_HEAD(lh);
 
 	/* released below */
-	error = aa_unpack(udata, size, &lh, &ns_name);
+	error = aa_unpack(udata, &lh, &ns_name);
 	if (error)
 		goto out;
 
@@ -877,21 +902,22 @@ ssize_t aa_replace_profiles(struct aa_label *label, u32 mask, void *udata,
 			count++;
 	}
 	if (ns_name) {
-		ns = aa_prepare_ns(labels_ns(label), ns_name);
-		if (!ns) {
+		ns = aa_prepare_ns(view, ns_name);
+		if (IS_ERR(ns)) {
 			info = "failed to prepare namespace";
-			error = -ENOMEM;
+			error = PTR_ERR(ns);
+			ns = NULL;
 			goto fail;
 		}
 	} else
-		ns = aa_get_ns(labels_ns(label));
+		ns = aa_get_ns(view);
 
 	mutex_lock(&ns->lock);
 	/* setup parent and ns info */
 	list_for_each_entry(ent, &lh, list) {
 		struct aa_policy *policy;
 
-		name = ent->new->base.hname;
+		ent->new->rawdata = aa_get_loaddata(udata);
 		error = __lookup_replace(ns, ent->new->base.hname,
 					 !(mask & AA_MAY_REPLACE_POLICY),
 					 &ent->old, &info);
@@ -920,7 +946,6 @@ ssize_t aa_replace_profiles(struct aa_label *label, u32 mask, void *udata,
 			if (!p) {
 				error = -ENOENT;
 				info = "parent does not exist";
-				name = ent->new->base.hname;
 				goto fail_lock;
 			}
 			rcu_assign_pointer(ent->new->parent, aa_get_profile(p));
@@ -985,13 +1010,26 @@ out:
 
 	if (error)
 		return error;
-	return size;
+	return udata->size;
 
 fail_lock:
 	mutex_unlock(&ns->lock);
-fail:
-	error = audit_policy(label, op, ns_name, name, info, error);
 
+	/* audit cause of failure */
+	op = (!ent->old) ? OP_PROF_LOAD : OP_PROF_REPL;
+fail:
+	audit_policy(label, op, ns_name, ent->new->base.hname, info, error);
+	/* audit status that rest of profiles in the atomic set failed too */
+	info = "valid profile in failed atomic policy load";
+	list_for_each_entry(tmp, &lh, list) {
+		if (tmp == ent) {
+			info = "unchecked profile in failed atomic policy load";
+			/* skip entry that caused failure */
+			continue;
+		}
+		op = (!ent->old) ? OP_PROF_LOAD : OP_PROF_REPL;
+		audit_policy(label, op, ns_name, tmp->new->base.hname, info, error);
+	}
 	list_for_each_entry_safe(ent, tmp, &lh, list) {
 		list_del_init(&ent->list);
 		aa_load_ent_free(ent);
@@ -1002,6 +1040,7 @@ fail:
 
 /**
  * aa_remove_profiles - remove profile(s) from the system
+ * @view: namespace the remove is being done from
  * @label: label attempting to remove policy
  * @fqname: name of the profile or namespace to remove  (NOT NULL)
  * @size: size of the name
@@ -1013,7 +1052,8 @@ fail:
  *
  * Returns: size of data consume else error code if fails
  */
-ssize_t aa_remove_profiles(struct aa_label *label, char *fqname, size_t size)
+ssize_t aa_remove_profiles(struct aa_ns *view, struct aa_label *label,
+			   char *fqname, size_t size)
 {
 	struct aa_ns *root = NULL, *ns = NULL;
 	struct aa_profile *profile = NULL;
@@ -1027,7 +1067,7 @@ ssize_t aa_remove_profiles(struct aa_label *label, char *fqname, size_t size)
 		goto fail;
 	}
 
-	root = labels_ns(label);
+	root = view;
 
 	if (fqname[0] == ':') {
 		name = aa_split_fqname(fqname, &ns_name);
