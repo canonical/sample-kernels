@@ -405,6 +405,7 @@ int aa_bind_mount(struct aa_label *label, struct path *path,
 						   &old_path),
 			     old_buffer, &old_name, &info,
 			     labels_profile(label)->disconnected);
+	path_put(&old_path);
 	if (error)
 		goto error;
 
@@ -414,7 +415,6 @@ int aa_bind_mount(struct aa_label *label, struct path *path,
 
 out:
 	put_buffers(buffer, old_buffer);
-	path_put(&old_path);
 
 	return error;
 
@@ -494,6 +494,7 @@ int aa_move_mount(struct aa_label *label, struct path *path,
 						   &old_path),
 			     old_buffer, &old_name, &info,
 			     labels_profile(label)->disconnected);
+	path_put(&old_path);
 	if (error)
 		goto error;
 
@@ -503,7 +504,6 @@ int aa_move_mount(struct aa_label *label, struct path *path,
 
 out:
 	put_buffers(buffer, old_buffer);
-	path_put(&old_path);
 
 	return error;
 
@@ -557,6 +557,7 @@ int aa_new_mount(struct aa_label *label, const char *orig_dev_name,
 						&dev_path),
 				     dev_buffer, &dev_name, &info,
 				     labels_profile(label)->disconnected);
+		path_put(&dev_path);
 		if (error)
 			goto error;
 	}
@@ -573,8 +574,6 @@ int aa_new_mount(struct aa_label *label, const char *orig_dev_name,
 
 cleanup:
 	put_buffers(buffer, dev_buffer);
-	if (requires_dev)
-		path_put(&dev_path);
 
 	return error;
 
