@@ -10,6 +10,7 @@ parts:
     source: .
     source-branch: snappy_v3.10
     source-type: git
+    build-packages: [bc]
     kdefconfig: [x86_64_defconfig, snappy/generic.config, snappy/security.config, snappy/systemd.config, snappy/snappy.config, snappy/containers.config]
     kconfigs:
       - CONFIG_LOCALVERSION="-snappy_v3.10"
